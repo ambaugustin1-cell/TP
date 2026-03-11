@@ -1,0 +1,20 @@
+groups:
+  - name: taskapi-alerts
+    rules:
+      - alert: HighErrorRate
+        expr: http_errors_total / http_requests_total > 0.05
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Taux d'erreur élevé"
+          description: "Le taux d'erreur dépasse 5% depuis plus d'1 minute"
+
+      - alert: AppDown
+        expr: up{job="taskapi"} == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Application hors ligne"
+          description: "L'application taskapi ne répond plus"
