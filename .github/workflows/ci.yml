@@ -1,0 +1,100 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Tests unitaires
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: src/package.json
+
+      - name: Installer les dépendances
+        run: cd src && npm install
+
+      - name: Lancer les tests
+        run: cd src && npm test -- --coverage
+
+      - name: Upload rapport de tests
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-coverage
+          path: src/coverage/
+
+  security:
+    name: Scans de sécurité
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: SAST - Semgrep
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: auto
+        continue-on-error: true
+
+      - name: Secret Detection - Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: SCA - Trivy filesystem
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          severity: 'CRITICAL'
+          exit-code: '1'
+
+  build:
+    name: Build image Docker
+    runs-on: ubuntu-latest
+    needs: security
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t taskapi:${{ github.sha }} .
+
+      - name: Container Scan - Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: taskapi:${{ github.sha }}
+          severity: 'CRITICAL'
+          exit-code: '1'
+
+      - name: SBOM - Syft
+        uses: anchore/sbom-action@v0
+        with:
+          image: taskapi:${{ github.sha }}
+          format: cyclonedx-json
+          output-file: sbom.json
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.json
+
+  deploy:
+    name: Déploiement
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy
+        run: echo "Déploiement sur main uniquement - SHA ${{ github.sha }}"

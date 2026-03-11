@@ -1,0 +1,6 @@
+kubectl
+minikube-linux-amd64
+taskapi.tar
+trivy-report.txt
+node_modules/
+.env
